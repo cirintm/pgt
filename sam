@@ -1,0 +1,269 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
+
+import 'View request status.dart';
+import 'others rating.dart'; // Import url_launcher
+
+class userview_reply extends StatefulWidget {
+  final String id;
+  const userview_reply({Key? key, this.title = "Home Details", required this.id}) : super(key: key);
+
+  final String title;
+
+  @override
+  _userview_replyState createState() => _userview_replyState();
+}
+
+class _userview_replyState extends State<userview_reply> {
+  Future<List<Joke>> _getJokes() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String b = prefs.getString("lid") ?? '';
+    String? url = prefs.getString("url");
+
+    if (url == null || url.isEmpty) {
+      throw Exception("URL is not available");
+    }
+
+    try {
+      var data = await http.post(Uri.parse("$url/View_house_details_user/${widget.id}"),
+          body: {"id": b});
+
+      if (data.statusCode == 200) {
+        var jsonData = json.decode(data.body);
+        List<Joke> jokes = [];
+        for (var joke in jsonData["message"]) {
+          String photo = Uri.parse("$url${joke["Photo_1"].toString()}").toString();
+          String photo2 = Uri.parse("$url${joke["Photo_2"].toString()}").toString();
+          String photo3 = Uri.parse("$url${joke["Photo_3"].toString()}").toString();
+          String photo4 = Uri.parse("$url${joke["Photo_4"].toString()}").toString();
+          String video = Uri.parse("$url${joke["Video"].toString()}").toString();
+
+          Joke newJoke = Joke(
+            joke["id"].toString(),
+            joke["HouseName"].toString(),
+            joke["HouseNo"].toString(),
+            photo.toString(),
+            photo2.toString(),
+            photo3.toString(),
+            photo4.toString(),
+            video.toString(),
+            joke["Details"].toString(),
+            joke["Rent"].toString(),
+            joke["Pin"].toString(),
+            joke["Post"].toString(),
+            joke["Place"].toString(),
+          );
+          jokes.add(newJoke);
+        }
+        return jokes;
+      } else {
+        throw Exception("Failed to load data");
+      }
+    } catch (e) {
+      throw Exception("Error fetching data");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: Color(0xFF86B817),
+      ),
+      body: Container(
+        color: Color(0xFFFFFFFF),
+        child: FutureBuilder(
+          future: _getJokes(),
+          builder: (BuildContext context, AsyncSnapshot snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            } else if (snapshot.hasData) {
+              if (snapshot.data.isEmpty) {
+                return Center(child: Text("No data available"));
+              }
+              return ListView.builder(
+                itemCount: snapshot.data.length,
+                itemBuilder: (BuildContext context, int index) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      color: Colors.transparent,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(height: 10),
+                            _buildRow("HouseName:", snapshot.data[index].HouseName),
+                            _buildRow("HouseNo:", snapshot.data[index].HouseNo),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  Image.network(
+                                    snapshot.data[index].Photo_1,
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Image.network(
+                                    snapshot.data[index].Photo_2,
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Image.network(
+                                    snapshot.data[index].Photo_3,
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Image.network(
+                                    snapshot.data[index].Photo_4,
+                                    width: 100,
+                                    height: 100,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _buildRow("Video:", "Click Below"),
+                            ElevatedButton(
+                              onPressed: () async {
+                                String videoUrl = snapshot.data[index].Video;
+                                if (await canLaunch(videoUrl)) {
+                                  await launch(videoUrl, forceSafariVC: false, forceWebView: false);
+                                } else {
+                                  throw 'Could not launch $videoUrl';
+                                }
+                              },
+                              child: Text("Watch Video"),
+                            ),
+                            _buildRow("Details:", snapshot.data[index].Details),
+                            _buildRow("Rent:", snapshot.data[index].Rent),
+                            _buildRow("Pin:", snapshot.data[index].Pin),
+                            _buildRow("Post:", snapshot.data[index].Post),
+                            _buildRow("Place:", snapshot.data[index].Place),
+                            ElevatedButton(
+                              onPressed: () async {
+                                SharedPreferences prefs = await SharedPreferences.getInstance();
+                                String b = prefs.getString("lid") ?? '';
+                                var data = await http.post(
+                                  Uri.parse(prefs.getString("url").toString() + "/Send_request_user"),
+                                  body: {"id": b, "hid": snapshot.data[index].id.toString()},
+                                );
+
+                                var jsonData = json.decode(data.body);
+
+                                if(jsonData['status'] == "ok") {
+                                  Navigator.push(context, MaterialPageRoute(
+                                      builder: (context) => request_status()));
+                                }
+                                else{
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text("Request already send")),
+                                  );
+                                }
+                              },
+                              child: Text("Send request",),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Color(0xFFFFFFFF), // Set button background color
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed:() async {
+
+                              Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                              builder: (context) =>
+                                  View_rating_state(id: snapshot.data[index].id),
+                              ));
+
+                              },
+                              child: Text("house ratings",),
+                              style: ElevatedButton.styleFrom(
+
+                                backgroundColor: Color(0xFFFFFFFF), // Set button background color
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                              ),
+                            ),
+
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            } else {
+              return Center(child: Text("No data available"));
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(color: Colors.grey.shade800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class Joke {
+  final String HouseName;
+  final String id;
+  final String HouseNo;
+  final String Photo_1;
+  final String Photo_2;
+  final String Photo_3;
+  final String Photo_4;
+  final String Video;
+  final String Details;
+  final String Rent;
+  final String Pin;
+  final String Post;
+  final String Place;
+
+  Joke(this.id, this.HouseName, this.HouseNo, this.Photo_1, this.Photo_2, this.Photo_3, this.Photo_4, this.Video,
+      this.Details, this.Rent, this.Pin, this.Post, this.Place);
+}
